@@ -17,17 +17,16 @@ Antes de executar QUALQUER chamada, classifique o cenario:
 
 | Estado | Regra | Exemplo |
 |--------|-------|---------|
-| `free` | Executa, informa depois | Qwen ou Gemini Flash sem dados sensiveis |
-| `paid` | Apresenta plano e custo estimado, pede OK | Codex, Claude, Gemini Pro |
+| `solo` | Uma IA resolve sozinha — nao monte equipe | Tarefa simples, escopo claro |
+| `parallel` | Multiplas perspectivas simultaneamente | Brainstorm, auditoria, revisao cruzada |
+| `sequential` | Saida de uma alimenta a proxima | Debug → revisao → consolidacao |
 | `sensitive` | SEMPRE pede autorizacao, sugere anonimizacao | Dados pessoais, policiais, LGPD |
 | `batch` | Roda 2-3 como teste, mostra resultado, pede OK para continuar | Lotes >10 itens |
 | `autonomous` | Executa tudo, reporta no final | Usuario disse "vai direto" / "modo autonomo" |
 
-<!-- Regra consolidada no FLUXO Step 2 acima. COST-GUARD e autoridade unica de custo. -->
-
 ## REFERENCIAS (carregue sob demanda)
 
-- **[ai-catalog.md](ai-catalog.md)**: Carregue APENAS ao selecionar IAs para a equipe. Contem modelos, comandos, custos, limites. Se o usuario mencionar modelos novos, atualize o catalogo.
+- **[ai-catalog.md](ai-catalog.md)**: Carregue APENAS ao selecionar IAs para a equipe. Contem modelos, comandos, especialidades, limites. Se o usuario mencionar modelos novos, atualize o catalogo.
 - **[team-patterns.md](team-patterns.md)**: Carregue APENAS se a tarefa precisa de equipe (2+ IAs). Padroes sao sugestoes, NAO regras fixas.
 - **[calling-conventions.md](calling-conventions.md)**: Carregue APENAS antes de executar chamadas CLI. Contem comandos exatos, env vars, timeouts, parsing.
 - **[examples.md](examples.md)**: NAO carregue a menos que precise de inspiracao para cenario incomum.
@@ -39,7 +38,7 @@ Antes de montar qualquer equipe, pergunte-se:
 
 1. **Necessidade**: Preciso de mais de uma IA? Uma so resolve?
 2. **Risco**: O que acontece se uma IA errar? Ha dados sensiveis?
-3. **Custo**: Posso resolver com IAs gratuitas? Justifica usar pagas?
+3. **Especialidade**: Cada IA convocada traz uma perspectiva diferente? Se duas fariam a mesma coisa, remova a redundante.
 4. **Dependencia**: Os resultados dependem um do outro (sequencial) ou sao independentes (paralelo)?
 5. **Validacao**: Como vou saber se o resultado esta correto? Preciso de segunda opiniao?
 
@@ -58,33 +57,30 @@ Se a resposta a (1) for "uma so resolve", NAO escale. Use a IA mais adequada e p
 2. MONTAR A EQUIPE (acao depende do modo)
    Antes de escalar, pergunte-se: Uma IA resolve sozinha? Se sim, NAO monte equipe.
 
+   SPECIALTY-GUARD: Cada IA convocada tem especialidade diferente das outras?
+   Se duas IAs fariam a mesma coisa, remova a redundante.
+
    Depois, aplique a regra do modo atual:
    - `autonomous`: Monte a equipe e va direto ao Step 3. NAO discuta com o usuario.
-   - `free`:       Monte a equipe e va ao Step 3. Informe a equipe no relatorio final.
-   - `paid` / `sensitive` / `batch`: Apresente o plano abaixo e ESPERE autorizacao:
-       a) Quais IAs e papeis escolhidos
+   - `solo`:       Use a IA mais adequada para a tarefa. Informe no relatorio final.
+   - `parallel` / `sequential`: Apresente o plano abaixo e ESPERE autorizacao:
+       a) Quais IAs e papeis escolhidos (e por que cada uma)
        b) Ordem de execucao (paralelo ou sequencial)
        c) O que cada IA fara especificamente
-       → Custo: veja COST-GUARD logo abaixo
+   - `sensitive` / `batch`: Idem acima, com autorizacao obrigatoria antes de iniciar.
 
-3. COST-GUARD (verificar antes de executar)
-   - Quantas chamadas pagas serao feitas?
-   - Existe alternativa gratuita equivalente?
-   - O usuario autorizou gastos?
-   - Para lotes: calcular custo estimado total antes de iniciar
-
-4. PREPARAR PROMPTS
+3. PREPARAR PROMPTS
    - Cada IA recebe um prompt especializado para seu papel
    - Prompts devem pedir saida estruturada (JSON quando possivel)
    - Incluir contexto necessario sem dados sensiveis desnecessarios
 
-5. EXECUTAR
+4. EXECUTAR
    - Chamar cada IA conforme o plano
    - Capturar e validar saidas
    - Tratar erros e timeouts
    - Salvar resultados intermediarios
 
-6. CONSOLIDAR
+5. CONSOLIDAR
    - Reunir resultados de todas as IAs
    - Identificar concordancias e divergencias
    - Gerar relatorio unificado
@@ -110,14 +106,6 @@ Quando a tarefa envolver dados pessoais:
 - **NUNCA** confie em saida JSON de IAs sem validar - sempre use regex ou try/catch no parse
 - **NUNCA** passe prompts grandes via argumento de linha de comando - use arquivo temp ou pipe
 
-## COST-GUARD
-
-- Sempre informe ao usuario quais chamadas sao GRATUITAS e quais sao PAGAS
-- Sugira alternativas gratuitas quando possivel (Qwen, Gemini Flash)
-- Para tarefas simples, nao escale desnecessariamente
-- Em lotes: calcule custo estimado ANTES de iniciar e confirme com usuario
-- Se custo estimado > $1: alerte explicitamente e peca autorizacao
-
 ## CONTRATO DE SAIDA OBRIGATORIO
 
 Toda chamada a uma IA externa DEVE:
@@ -140,10 +128,10 @@ Todo relatorio de orquestracao consolidado DEVE seguir este schema:
 ```json
 {
   "tarefa": "descricao da tarefa original",
-  "modo": "free|paid|sensitive|batch|autonomous",
+  "modo": "solo|parallel|sequential|sensitive|batch|autonomous",
   "equipe": [
-    {"ia": "gemini", "modelo": "gemini-3-pro-preview", "papel": "analista-arquitetural"},
-    {"ia": "qwen",   "modelo": "qwen3-coder",          "papel": "revisor-educativo"}
+    {"ia": "gemini", "modelo": "gemini-3-pro-preview", "papel": "analista-arquitetural", "especialidade": "arquitetura e design patterns"},
+    {"ia": "qwen",   "modelo": "qwen3-coder",          "papel": "revisor-educativo",     "especialidade": "code review e alternativas"}
   ],
   "resultados": {
     "gemini": {"status": "OK|ERRO", "resumo": "..."},
@@ -151,8 +139,7 @@ Todo relatorio de orquestracao consolidado DEVE seguir este schema:
   },
   "consenso": "pontos em que todas as IAs concordaram",
   "divergencias": "pontos conflitantes entre IAs (se houver)",
-  "recomendacao_final": "conclusao do orquestrador (Claude) apos sintetizar os resultados",
-  "custo_estimado": {"gratuitas": ["gemini-flash", "qwen"], "pagas": ["codex"]}
+  "recomendacao_final": "conclusao do orquestrador (Claude) apos sintetizar os resultados"
 }
 ```
 

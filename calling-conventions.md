@@ -115,8 +115,7 @@ echo "prompt" > /tmp/qwen_prompt.txt && cat /tmp/qwen_prompt.txt | qwen && rm /t
 - Para JSON: pedir "Responda APENAS JSON, sem texto adicional"
 
 ### Limites
-- 2.000 requisicoes/dia (gratuito via OpenRouter)
-- Sem limite via Ollama local
+- 2.000 requisicoes/dia via OpenRouter (sem limite via Ollama local)
 
 ---
 
@@ -234,8 +233,8 @@ done
 
 ## DICAS DE PERFORMANCE
 
-1. **Prefira Gemini Flash ou Qwen** para tarefas de triagem/filtragem
-2. **Reserve Gemini Pro e Codex** para analises profundas
+1. **Para triagem e filtragem**: Gemini Flash ou Qwen (resposta rapida, bons para volume)
+2. **Para analise profunda**: Gemini Pro (arquitetura) ou Codex (bugs precisos) — escolha pela especialidade
 3. **Use arquivos temp** para prompts > 1000 caracteres
 4. **Salve resultados intermediarios** em lotes para nao perder progresso
 5. **Pipe e redirecionamento** sao mais eficientes que subprocess Python quando possivel

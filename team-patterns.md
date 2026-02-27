@@ -40,20 +40,20 @@ Consolidador: Claude (relatorio unificado)
 ```
 
 **Execucao**: Arquiteto + Debugger + Revisor em PARALELO, depois Claude consolida.
-**Custo**: Gemini (gratis) + Codex (pago) + Qwen (gratis) + Claude (pago)
+**Especialidades**: Gemini (arquitetura) + Codex (debugging) + Qwen (review educativo) + Claude (consolidacao)
 
 ---
 
-## PADRAO 2: DESENVOLVIMENTO DIARIO (ECONOMICO)
+## PADRAO 2: DESENVOLVIMENTO AGIL
 
 ```
-1. Revisor: Qwen (review inicial GRATUITO)
-2. Validador: Gemini Flash (confirma achados GRATUITO)
-3. Se necessario: Codex ou Claude (implementacao/decisao)
+1. Revisor: Qwen (review inicial e educativo)
+2. Validador: Gemini Flash (confirma achados com velocidade)
+3. Se necessario: Codex ou Claude (implementacao/decisao aprofundada)
 ```
 
 **Execucao**: SEQUENCIAL (escala so se necessario)
-**Custo**: Majoritariamente GRATUITO
+**Logica**: Comeca pela IA mais rapida; escala para especialistas se o problema exigir
 
 ---
 
@@ -67,7 +67,7 @@ Consolidador: Claude (relatorio unificado)
 ```
 
 **Execucao**: SEQUENCIAL (cada etapa informa a proxima)
-**Custo**: Misto
+**Logica**: Precisao do Codex → contexto do Qwen → visao arquitetural do Gemini → decisao sistemica do Claude
 
 ---
 
@@ -83,7 +83,7 @@ Consolidador: Claude (relatorio final, decisao)
 ```
 
 **Execucao**: Auditores em PARALELO, depois Claude decide.
-**Custo**: Gemini (gratis) + Qwen (gratis) + Claude (pago)
+**Especialidades**: Gemini (analise exaustiva de padroes) + Qwen (segunda opiniao educativa) + Claude (decisao e relatorio)
 **NOTA**: Dados devem ser anonimizados ANTES de enviar para IAs
 
 ---
@@ -100,7 +100,7 @@ Validador: Gemini Pro ou Claude (amostragem para QA)
 ```
 
 **Execucao**: Workers em PARALELO processando itens diferentes
-**Custo**: Majoritariamente GRATUITO
+**Logica**: Qwen (review educativo) + Gemini Flash (validacao rapida) → especialista apenas para QA de amostragem
 **NOTA**: Salvar progresso incrementalmente para nao perder trabalho
 
 ---
@@ -118,7 +118,7 @@ Sintese: Claude (compara, identifica consenso e divergencias)
 ```
 
 **Execucao**: PARALELO total
-**Custo**: Claude (pago) + Gemini (gratis) + Qwen (gratis)
+**Especialidades**: Claude (visao executiva) + Gemini (visao arquitetural) + Qwen (visao educativa)
 
 ---
 
@@ -165,19 +165,15 @@ Pergunte-se (e discuta com o usuario):
    - Multiplas → Padrao 6 (brainstorm) ou 7 (validacao cruzada)
    - Uma so → Padrao 8 (especialista)
 
-3. **Ha restricao de custo?**
-   - Sim → Priorize Qwen + Gemini (gratuitos)
-   - Nao → Use a melhor IA para cada papel
-
-4. **Os resultados dependem um do outro?**
+3. **Os resultados dependem um do outro?**
    - Sim → SEQUENCIAL
    - Nao → PARALELO
 
-5. **Ha dados sensiveis?**
+4. **Ha dados sensiveis?**
    - Sim → Anonimize primeiro, prefira IAs locais
    - Nao → Qualquer IA
 
-6. **E processamento em lote?**
+5. **E processamento em lote?**
    - Sim → Padrao 5 (workers)
    - Nao → Padroes 1-4 ou 6-8
 
