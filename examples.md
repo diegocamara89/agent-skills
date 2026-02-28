@@ -11,8 +11,8 @@
 
 **Equipe sugerida**:
 ```
-Auditor 1: Gemini Flash (varredura rapida, GRATUITO)
-Auditor 2: Qwen (segunda opiniao, GRATUITO)
+Auditor 1: Gemini Flash (varredura rapida)
+Auditor 2: Qwen (segunda opiniao)
 Consolidador: Claude (relatorio final)
 ```
 
@@ -41,37 +41,46 @@ rm -f /tmp/audit_prompt.txt
 **Fluxo de discussao com usuario**:
 ```
 Claude: Para auditar a anonimizacao, sugiro:
-  - Gemini Flash como auditor principal (rapido, gratuito)
-  - Qwen como segundo auditor (perspectiva diferente, gratuito)
+  - Gemini Flash como auditor principal (rapido, especializado em varredura)
+  - Qwen como segundo auditor (perspectiva alternativa)
   - Eu consolido os resultados e gero relatorio
-  Custo total: ZERO (so eu sou pago, mas ja estou aqui)
+  Especialidades complementares garantem auditoria rigorosa.
   Posso executar?
 ```
 
 ---
 
-## EXEMPLO 2: Avaliacao Curricular em Lote
+## EXEMPLO 2: Avaliacao Curricular em Lote (BASICO)
 
-**Cenario**: Avaliar 50+ curriculos com criterios especificos.
+**Cenario**: Avaliar ate 20 curriculos com criterios especificos.
+
+> **Para lotes >20 curriculos**, usar Padrao 9 / Exemplo 7 (pipeline resiliente com Codex).
+> Gemini e instavel em lotes grandes (rate limit 429, rc=130).
 
 **Equipe sugerida**:
 ```
-Worker: Gemini Flash (processa todos, GRATUITO, rapido)
-QA: Gemini Pro (valida amostra de 10%, GRATUITO)
+Worker: Codex ou Qwen (processa todos via stdin pipe)
+QA: Gemini Pro (valida amostra de 10%, pontual)
 Relatorio: Claude (ranking final, dashboard)
 ```
 
 **Execucao**:
 ```bash
-# Worker processa cada curriculo
+# Worker processa cada curriculo via stdin pipe (SEGURO)
 for arquivo in curriculos/*.txt; do
-    gemini -m gemini-3-flash-preview -p "Avalie este curriculo (0-100) para a vaga X. JSON: {score, recomendacao, justificativa}. Curriculo: $(cat $arquivo)" >> resultados.jsonl
+    prompt="Avalie este curriculo (0-100) para a vaga X. JSON: {score, recomendacao, justificativa}."
+    prompt="$prompt\n\nCurriculo:\n$(cat $arquivo)"
+    echo "$prompt" | qwen >> resultados.jsonl
     sleep 1  # rate limit
 done
 
-# QA valida amostra
+# QA valida amostra (Gemini pontual, OK)
 amostra=$(shuf -n 5 resultados.jsonl)
-gemini -m gemini-3-pro-preview -p "Valide estas avaliacoes. Estao coerentes? $amostra"
+cat > /tmp/qa_prompt.txt << EOF
+Valide estas avaliacoes. Estao coerentes?
+$amostra
+EOF
+gemini -m gemini-3-pro-preview -p "@/tmp/qa_prompt.txt"
 ```
 
 ---
@@ -116,7 +125,7 @@ rm -f /tmp/prompt_arq.txt
 
 **Equipe sugerida**:
 ```
-Worker: Qwen (normalizacao item a item, GRATUITO)
+Worker: Qwen (normalizacao item a item, rapido)
 Validador: Gemini Flash (confirma mapeamentos duvidosos)
 ```
 
@@ -170,7 +179,7 @@ Todos recebem o MESMO prompt, cada um da sua perspectiva:
 
 **Execucao**: PARALELO
 ```bash
-prompt="Como implementar autenticacao SSO no sistema X? Considere custo, complexidade e manutencao."
+prompt="Como implementar autenticacao SSO no sistema X? Considere complexidade, manutencao e seguranca."
 
 gemini -m gemini-3-pro-preview -p "$prompt" > /tmp/gemini.txt &
 qwen -p "$prompt" > /tmp/qwen.txt &
@@ -178,6 +187,83 @@ wait
 
 # Claude analisa as 3 perspectivas (incluindo a propria)
 ```
+
+---
+
+## EXEMPLO 7: Avaliacao Curricular em Lote — Caso Real URGA (Padrao 9)
+
+> **Caso real validado em producao** (26/02/2026).
+> 63 curriculos avaliados com 100% de sucesso em 397 segundos.
+> Referencia de implementacao: `avaliar_urga_orquestrado.py` (v3).
+
+**Cenario**: Avaliar 63 curriculos de candidatos do concurso PCRN para a URGA
+(Unidade de Recuperacao e Gestao de Ativos). Cada curriculo precisa ser analisado
+contra competencias especificas (contabilidade, PLD, COAF/SISBAJUD, etc.) com
+evidencias a favor/contra e recomendacao final.
+
+**Evolucao do pipeline (licoes aprendidas)**:
+
+| Versao | Arquitetura | Resultado |
+|--------|-------------|-----------|
+| v1 | Gemini Flash (analise) + Gemini Pro (validacao), prompt via `-p` | **FALHOU** — prompt corrompido, timeout ineficaz, rate limit 429 |
+| v2 | Gemini Flash + Pro com stdin pipe e fixes | **INSTAVEL** — Gemini continuou com rc=130 e timeouts |
+| v3 | **Codex unico** via stdin pipe, 1 chamada/candidato | **SUCESSO** — 63/63 em 397s |
+
+**Equipe final (v3)**:
+```
+Preflight: Verificar codex e qwen no PATH
+  |
+  v
+Worker Pool (2 threads):
+  +-- Worker: Codex (stdin pipe, prompt combinado analise+decisao)
+  +-- Fallback: Qwen (automatico apos 3 falhas do Codex)
+  |
+  v
+Para cada candidato:
+  1. Ler curriculo.txt + analise_perfil_ia.json
+  2. Montar prompt com PERFIL_URGA + dados do candidato
+  3. Enviar via stdin pipe: codex exec --skip-git-repo-check -
+  4. Extrair JSON com parser balanceado (3 niveis)
+  5. Salvar checkpoint atomico (tmp → fsync → rename)
+  |
+  v
+Consolidador: Claude (gera relatorio MD + HTML de apresentacao)
+```
+
+**Execucao (subprocess Python)**:
+```python
+import subprocess, os
+
+env = os.environ.copy()
+env.pop('OPENAI_BASE_URL', None)
+env.pop('OPENAI_API_KEY', None)
+
+proc = subprocess.Popen(
+    ['codex', 'exec', '--skip-git-repo-check', '-'],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    text=True, encoding='utf-8', env=env,
+    creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
+)
+try:
+    stdout, stderr = proc.communicate(input=prompt_text, timeout=300)
+except subprocess.TimeoutExpired:
+    # OBRIGATORIO: matar arvore inteira no Windows
+    subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)],
+                   capture_output=True, timeout=10)
+    proc.wait(timeout=5)
+    raise
+```
+
+**Resultado**: 63 candidatos | 397s total | 1 Sim, 61 Parcial, 1 Nao | 100% sucesso
+
+**Bugs encontrados e resolvidos na jornada**:
+1. Prompt corrompido via `-p` (chars `{}|%` interpretados pelo cmd.exe)
+2. Timeout ineficaz no Windows (processos filhos nao morrem)
+3. Regex gulosa `\{[\s\S]*\}` na extracao de JSON
+4. Checkpoint nao-atomico (corrupcao em interrupcao)
+5. `except:` bare engolindo Ctrl+C
+6. Stderr do Gemini (IDEClient) tratado como erro
+7. Rate limit 429 do Gemini com 2+ workers simultaneos
 
 ---
 
@@ -189,4 +275,11 @@ wait
 - Nao escale: 1 IA basta para perguntas simples
 - Nao envie dados brutos: use arquivo temp, nunca `$(cat sensivel.txt)` inline
 - Nao ignore erros: retry com backoff ou IA alternativa
-- Nao gaste: Qwen/Gemini Flash para triagem, pagas so para analise profunda
+- Use especialidade certa: Qwen/Gemini Flash para triagem rapida, Codex/Claude para analise profunda
+- **Nao use `-p` para prompts com conteudo variavel**: chars `{}|%` corrompem no Windows → use stdin pipe
+- **Nao confie em `proc.kill()` no Windows**: use `taskkill /F /T /PID` para matar arvore inteira
+- **Nao use regex gulosa para JSON**: `\{[\s\S]*\}` engole tudo → use parser balanceado
+- **Nao use `except:` sem tipo**: engole KeyboardInterrupt → use excecoes especificas
+- **Nao assuma que Gemini e estavel em lote**: rate limit 429 e rc=130 aparecem apos ~20 chamadas
+- **Nao trate stderr como erro**: filtrar ruido conhecido (IDEClient, cached credentials)
+- **Nao use `@arquivo` para Gemini no Windows via subprocess**: timeout expiram (60-120s), use PowerShell + pipe nativo (`Get-Content | gemini`) com timeout 300s+
