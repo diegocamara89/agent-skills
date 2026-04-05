@@ -2,16 +2,7 @@
 
 > Este documento define os comandos EXATOS para chamar cada IA.
 > Testado e validado no ambiente do usuario (Windows + Git Bash/MSYS2).
-> **Atualizado em 2026-02-26** com licoes aprendidas em producao (pipeline URGA).
-
----
-
-## AMBIENTE DO USUARIO
-
-- **OS**: Windows 10/11 com MSYS2/Git Bash
-- **Shell padrao no Claude Code**: Bash (via MSYS2)
-- **PowerShell**: Disponivel via `powershell -Command "..."`
-- **Encoding**: UTF-8
+> **Atualizado em 2026-04-05** com licoes aprendidas em producao (pipeline URGA).
 
 ---
 
@@ -67,59 +58,6 @@ gemini -m gemini-3-flash-preview -p "@caminho/do/arquivo.txt"
 gemini -m gemini-3-pro-preview --output-format json -p "@/tmp/prompt.txt"
 ```
 
-### Via subprocess Python — METODO POWERSHELL (RECOMENDADO no Windows)
-```python
-import subprocess, tempfile, os
-
-# METODO 1 (RECOMENDADO): PowerShell com pipe nativo
-# Gemini funciona MUITO melhor assim no Windows do que com @arquivo
-with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-    f.write(prompt_text)
-    prompt_file = f.name
-
-output_file = tempfile.mktemp(suffix='.txt')
-
-ps_command = f'''
-$content = Get-Content -Path "{prompt_file}" -Raw
-$result = $content | gemini -m gemini-3-flash-preview
-$result | Out-File -FilePath "{output_file}" -Encoding utf8
-'''
-
-try:
-    result = subprocess.run(
-        ["powershell", "-Command", ps_command],
-        capture_output=True, text=True, encoding='utf-8',
-        timeout=300  # 5 minutos (Gemini precisa de timeout generoso)
-    )
-    with open(output_file, 'r', encoding='utf-8') as f:
-        output = f.read()
-finally:
-    if os.path.exists(prompt_file):
-        os.unlink(prompt_file)
-    if os.path.exists(output_file):
-        os.unlink(output_file)
-```
-
-### Via subprocess Python — METODO @ARQUIVO (fallback)
-```python
-import subprocess, tempfile, os
-
-# METODO 2 (MENOS CONFIAVEL): @arquivo via Bash
-# Funciona, mas pode ter problemas com timeout e rc=130
-with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-    f.write(prompt_text)
-    temp_path = f.name
-
-try:
-    result = subprocess.run(
-        ['gemini', '-m', 'gemini-3-flash-preview', '-p', f'@{temp_path}'],
-        capture_output=True, text=True, timeout=300, encoding='utf-8'
-    )
-    output = result.stdout
-finally:
-    os.unlink(temp_path)
-```
-
 ### Timeout recomendado
 - Flash: 120s (2min)
 - Pro: 300s (5min)
@@ -152,23 +90,6 @@ unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec --skip-git-repo-chec
 echo "prompt com {chaves} e |pipes|" | \
   unset OPENAI_BASE_URL && unset OPENAI_API_KEY && \
   codex exec --skip-git-repo-check -
-```
-
-### Via subprocess Python (stdin pipe)
-```python
-import subprocess, os
-
-env = os.environ.copy()
-env.pop('OPENAI_BASE_URL', None)
-env.pop('OPENAI_API_KEY', None)
-
-proc = subprocess.Popen(
-    ['codex', 'exec', '--skip-git-repo-check', '-'],  # '-' = stdin
-    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    text=True, encoding='utf-8', env=env,
-    creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)  # Windows
-)
-stdout, stderr = proc.communicate(input=prompt_text, timeout=300)
 ```
 
 ### Chamada direta (apenas prompts curtos sem caracteres especiais)
@@ -240,266 +161,61 @@ cat /tmp/qwen_prompt.txt | qwen && rm /tmp/qwen_prompt.txt
 
 ---
 
-## 4. CLAUDE CODE (auto-referencia)
+## 4. CLAUDE CODE
 
-### Chamada direta (de outro processo)
+### Chamada via stdin pipe (RECOMENDADA — testada em producao 2026-04-05)
 ```bash
-claude -p "prompt"
+# Stdin pipe — seguro para qualquer conteudo, sem corrupcao de {|}%
+echo "prompt com {chaves} e |pipes|" | claude --print
+
+# Para prompts grandes: arquivo temporario + pipe
+cat > /tmp/claude_prompt.txt << 'EOF'
+seu prompt aqui
+EOF
+cat /tmp/claude_prompt.txt | claude --print && rm -f /tmp/claude_prompt.txt
 ```
 
-### NOTA: Claude normalmente e o ORQUESTRADOR, nao o orquestrado.
-Raramente voce chamara Claude de dentro do Claude.
-Mas e possivel para pipelines encadeados.
-
----
-
-## PADROES DE CHAMADA COMUNS
-
-### Padrao 1: Chamada simples com captura
-```bash
-# Bash tool - resultado vai para stdout
-resultado=$(gemini -m gemini-3-flash-preview -p "analise X")
-echo "$resultado"
+### Via PowerShell (alternativa equivalente)
+```powershell
+$content = Get-Content -Path "/tmp/claude_prompt.txt" -Raw
+$result = $content | claude --print
 ```
 
-### Padrao 2: Encadeamento (output de uma IA como input de outra)
+### Timeout recomendado
+- Tarefas simples: 120s
+- Tarefas complexas: 300s
+
+### NOTA: o que NAO funciona no Windows
 ```bash
-# Gemini analisa, Qwen valida
-analise=$(gemini -m gemini-3-pro-preview -p "analise arquitetural de X")
-validacao=$(echo "$analise" | qwen -p "valide esta analise: ")
+claude --print < arquivo.txt  # FALHA — PowerShell reserva o operador '<'
+claude -p "prompt longo"      # RISCO — cmd.exe corrompe {|}%
 ```
 
-### Padrao 3: Paralelo via background
-```bash
-# Rodar em paralelo e coletar resultados
-gemini -m gemini-3-flash-preview -p "tarefa A" > /tmp/resultado_gemini.txt &
-qwen -p "tarefa B" > /tmp/resultado_qwen.txt &
-wait
-# Ler resultados
-cat /tmp/resultado_gemini.txt
-cat /tmp/resultado_qwen.txt
-```
-
-### Padrao 4: Com arquivo de prompt (para prompts grandes)
-```bash
-# Salvar prompt em arquivo
-cat > /tmp/prompt.txt << 'PROMPT_EOF'
-Seu prompt grande aqui
-com multiplas linhas
-PROMPT_EOF
-
-# Chamar com @arquivo
-gemini -m gemini-3-pro-preview -p "@/tmp/prompt.txt"
-```
-
-### Padrao 5: Resultado em arquivo (para saidas grandes)
-```bash
-gemini -m gemini-3-pro-preview -p "prompt" > resultado.txt 2>&1
-```
+### Quando Claude e o ORQUESTRADOR (dentro do Claude Code)
+Nao use subprocess. Use o Agent tool nativo para chamar Codex,
+e o Bash tool com stdin pipe para chamar Gemini e Qwen.
 
 ---
 
 ## WINDOWS: KILL DE ARVORE DE PROCESSO
 
 > **APRENDIDO EM PRODUCAO**: `subprocess.run(timeout=N)` NAO mata processos filhos no Windows.
-> O `cmd.exe` cria uma arvore de processos — timeout so mata o pai, filhos continuam rodando.
-> Resultado: timeout de 120s pode levar 279s+ ate retornar.
+> `cmd.exe` cria arvore de processos — timeout so mata o pai, filhos continuam. Resultado: 120s pode levar 279s+.
 
-### Solucao obrigatoria para scripts Python no Windows
+**Solucao**: Use `Popen` com `creationflags=CREATE_NEW_PROCESS_GROUP`. Em `TimeoutExpired`, chame `taskkill /F /T /PID <pid>` (nao `proc.kill()`), depois `proc.wait(timeout=5)`.
 
-```python
-import subprocess, os
-
-_CREATE_NEW_PROCESS_GROUP = getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
-
-def _kill_process_tree(proc):
-    """Mata o processo E todos os seus filhos no Windows."""
-    try:
-        if os.name == 'nt':
-            subprocess.run(
-                ['taskkill', '/F', '/T', '/PID', str(proc.pid)],
-                capture_output=True, timeout=10
-            )
-        else:
-            proc.kill()
-        proc.wait(timeout=5)
-    except Exception:
-        pass
-
-# Uso:
-proc = subprocess.Popen(
-    cmd,
-    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    text=True, encoding='utf-8',
-    creationflags=_CREATE_NEW_PROCESS_GROUP  # OBRIGATORIO no Windows
-)
-try:
-    stdout, stderr = proc.communicate(input=prompt, timeout=300)
-except subprocess.TimeoutExpired:
-    _kill_process_tree(proc)  # Mata TODA a arvore
-    raise
-```
-
-### Regras
-1. SEMPRE criar processo com `CREATE_NEW_PROCESS_GROUP`
-2. Em caso de timeout, usar `taskkill /F /T /PID <pid>` (nao `proc.kill()`)
-3. Depois: `proc.wait(timeout=5)` para limpar
+A implementacao completa esta em `scripts/run_ai_cli.py`.
 
 ---
 
-## FILTRO DE STDERR (IDEClient e outros ruidos)
+## FILTRO DE STDERR
 
-O Gemini CLI emite mensagens inofensivas no stderr que parecem erros:
-```
-[IDEClient] Failed to connect to IDE companion extension
-```
-
-**NAO trate stderr como indicador de falha.** Filtre ruido conhecido:
-```python
-_STDERR_NOISE = ["IDEClient", "cached credentials", "ide install",
-                 "companion extension", "mcp:", "thinking"]
-
-def _filter_stderr(stderr_raw):
-    if not stderr_raw:
-        return ""
-    lines = [l for l in stderr_raw.strip().splitlines()
-             if not any(w in l for w in _STDERR_NOISE)]
-    return " | ".join(lines)[:200]
-```
+O Gemini emite ruido inofensivo no stderr: `[IDEClient] Failed to connect to IDE companion extension`. **NAO trate stderr como indicador de falha.** Ignore linhas contendo: `IDEClient`, `cached credentials`, `companion extension`, `mcp:`.
 
 ---
 
-## TRATAMENTO DE ERROS
+## EXTRACAO DE JSON
 
-### Erros comuns e solucoes
+> **APRENDIDO EM PRODUCAO**: `grep -oP '\{.*\}'` e GULOSO — casa do primeiro `{` ao ultimo `}` do texto inteiro. Use parser balanceado com 3 niveis de fallback: (1) texto puro, (2) bloco markdown ```json```, (3) varredura caracter a caracter com depth counter.
 
-| Erro | IA | Solucao |
-|------|-----|---------|
-| Timeout | Todas | Aumentar timeout, reduzir prompt |
-| Prompt corrompido | Todas | Trocar `-p` por stdin pipe |
-| "command not found" | Todas | Verificar PATH, reinstalar |
-| JSON invalido | Todas | Parser balanceado (ver abaixo) |
-| Rate limit (429) | Gemini | Serializar chamadas, usar Codex/Qwen |
-| rc=130 "Operation cancelled" | Gemini | Retry ou trocar para Codex |
-| Auth error | Codex | Limpar OPENAI_BASE_URL/KEY |
-| Encoding | Todas | Forcar UTF-8 no subprocess |
-| Resposta invalida | Todas | Detectar frases de "nao recebi" (ver Regra de Ouro) |
-| Processo zombie (Windows) | Todas | `taskkill /F /T /PID` (ver secao acima) |
-
-### Extracao de JSON — Parser balanceado (3 niveis)
-
-> **APRENDIDO EM PRODUCAO**: `grep -oP '\{.*\}'` e GULOSO — casa do primeiro `{`
-> ao ultimo `}` do texto inteiro, englobando lixo. Usar parser balanceado.
-
-```python
-import json, re
-
-def _extrair_json_balanceado(texto):
-    """Encontra o primeiro JSON valido com chaves balanceadas."""
-    inicio = texto.find('{')
-    while inicio != -1:
-        depth = 0
-        in_string = False
-        escape_next = False
-        for i in range(inicio, len(texto)):
-            c = texto[i]
-            if escape_next:
-                escape_next = False
-                continue
-            if c == '\\' and in_string:
-                escape_next = True
-                continue
-            if c == '"' and not escape_next:
-                in_string = not in_string
-                continue
-            if in_string:
-                continue
-            if c == '{':
-                depth += 1
-            elif c == '}':
-                depth -= 1
-                if depth == 0:
-                    candidato = texto[inicio:i + 1]
-                    try:
-                        return json.loads(candidato)
-                    except (json.JSONDecodeError, TypeError):
-                        break
-        inicio = texto.find('{', inicio + 1)
-    return None
-
-def extrair_json(texto):
-    """Extrai JSON de saida de IA com 3 niveis de fallback."""
-    if not texto:
-        return None
-    # Nivel 1: texto inteiro e JSON puro
-    try:
-        return json.loads(texto)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        pass
-    # Nivel 2: JSON dentro de bloco markdown ```json ... ```
-    m = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', texto)
-    if m:
-        try:
-            return json.loads(m.group(1))
-        except (json.JSONDecodeError, TypeError):
-            pass
-    # Nivel 3: parser balanceado (mais robusto)
-    return _extrair_json_balanceado(texto)
-```
-
-### Funcao de validacao JSON (Bash — uso rapido)
-```bash
-validar_json() {
-    local json="$1"
-    if echo "$json" | python3 -c "import sys,json; json.load(sys.stdin)" 2>/dev/null; then
-        return 0
-    fi
-    # fallback: extrair via Python com parser balanceado
-    local extraido
-    extraido=$(echo "$json" | python3 -c "
-import sys, json, re
-txt = sys.stdin.read()
-m = re.search(r'\`\`\`(?:json)?\s*(\{[\s\S]*?\})\s*\`\`\`', txt)
-if m:
-    try:
-        json.loads(m.group(1)); print(m.group(1)); exit(0)
-    except: pass
-# fallback simples
-start = txt.find('{')
-end = txt.rfind('}')
-if start >= 0 and end > start:
-    candidate = txt[start:end+1]
-    try:
-        json.loads(candidate); print(candidate); exit(0)
-    except: pass
-exit(1)
-" 2>/dev/null)
-    if [ $? -eq 0 ] && [ -n "$extraido" ]; then
-        echo "$extraido"
-        return 0
-    fi
-    return 1
-}
-```
-
-### Retry logic com backoff exponencial
-```bash
-# Tentar ate 3 vezes com backoff crescente (5s, 15s, 45s)
-for i in 1 2 3; do
-    resultado=$(gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt" 2>&1) && break
-    echo "Tentativa $i falhou, aguardando $((5 * 3 ** ($i - 1)))s..."
-    sleep $((5 * 3 ** ($i - 1)))
-done
-```
-
----
-
-## DICAS DE PERFORMANCE
-
-1. **Use stdin pipe** para qualquer prompt com conteudo variavel
-2. **Prefira Codex ou Qwen** para lotes grandes (Gemini e instavel em lote)
-3. **Reserve Gemini Pro** para analises pontuais de arquitetura
-4. **Salve resultados intermediarios** com escrita atomica (tmp → fsync → rename)
-5. **Use `shutil.which()`** para resolver executaveis em vez de hardcoded `.cmd`
-6. **Filtre stderr** antes de tratar como erro (IDEClient, etc.)
-7. **Nao use `except:` bare** — capture excecoes especificas (impede Ctrl+C)
+Implementacao em `scripts/run_ai_cli.py`. Para retry com backoff, use `for i in 1 2 3; do ... && break; sleep $((5 * 3 ** ($i-1))); done`.

@@ -1,164 +1,156 @@
 ---
 name: orchestrate
-description: Orquestra equipes de IAs via chamadas CLI (Gemini, Codex, Qwen, Claude) para tarefas multi-agent com papeis dinamicos. Use quando o usuario pedir analise multi-IA, auditoria, pipeline de IAs, processamento em lote, team of AIs, multiplas perspectivas, validacao cruzada entre modelos, ou qualquer tarefa que se beneficie de orquestracao de agentes via terminal.
-argument-hint: [descricao-da-tarefa]
-disable-model-invocation: false
-user-invocable: true
-allowed-tools: Read, Grep, Glob, Bash, Write, Edit
+description: Orquestrador Windows-first para Claude Code como planejador principal, Codex como executor e Claude como validador condicional, com failover reativo entre perfis Claude e handoff estruturado de baixo contexto.
 ---
 
-# Orchestrate - Orquestrador Multi-IA
+# Orchestrate
 
-Voce e um **orquestrador de equipes de IAs**. Sua funcao e montar e coordenar equipes de IAs via CLI para resolver tarefas complexas.
+Use esta skill quando o trabalho pedir coordenacao entre modelos, troca automatica de perfis Claude por cota, ou quando o usuario quiser explicitar o fluxo `Claude planeja -> Codex executa -> Claude valida quando vale a pena`.
 
-## POLITICA DE DECISAO (regra unica canonica)
+## Objetivo canonico
 
-Antes de executar QUALQUER chamada, classifique o cenario:
+- `Claude` decide o plano, o risco e se vale chamar outro modelo.
+- `Codex` executa implementacao, automacao e alteracoes de codigo.
+- `Claude` valida apenas quando o risco justificar custo e latencia.
 
-| Estado | Regra | Exemplo |
-|--------|-------|---------|
-| `free` | Executa, informa depois | Qwen ou Gemini Flash sem dados sensiveis |
-| `paid` | Apresenta plano e custo estimado, pede OK | Codex, Claude, Gemini Pro |
-| `sensitive` | SEMPRE pede autorizacao, sugere anonimizacao | Dados pessoais, policiais, LGPD |
-| `batch` | Roda 2-3 como teste, mostra resultado, pede OK para continuar | Lotes >10 itens |
-| `autonomous` | Executa tudo, reporta no final | Usuario disse "vai direto" / "modo autonomo" |
+Nao trate esta skill como um "roteador multi-IA generico". O caminho padrao aqui e:
 
-<!-- Regra consolidada no FLUXO Step 2 acima. COST-GUARD e autoridade unica de custo. -->
+1. classificar a tarefa
+2. planejar no Claude
+3. executar no Codex quando houver trabalho de implementacao
+4. devolver ao Claude um handoff curto
+5. validar no Claude apenas se os gatilhos de risco forem atingidos
 
-## REFERENCIAS (carregue sob demanda)
+## Como identificar qual IA voce e
 
-- **[ai-catalog.md](ai-catalog.md)**: Carregue APENAS ao selecionar IAs para a equipe. Contem modelos, comandos, custos, limites. Se o usuario mencionar modelos novos, atualize o catalogo.
-- **[team-patterns.md](team-patterns.md)**: Carregue APENAS se a tarefa precisa de equipe (2+ IAs). Padroes sao sugestoes, NAO regras fixas.
-- **[calling-conventions.md](calling-conventions.md)**: Carregue APENAS antes de executar chamadas CLI. Contem comandos exatos, env vars, timeouts, parsing.
-- **[examples.md](examples.md)**: NAO carregue a menos que precise de inspiracao para cenario incomum.
-- **[privacy-tools.md](privacy-tools.md)**: Carregue APENAS em modo `sensitive`. Presidio (anonimizacao LGPD), structlog (auditoria), Rich (output), Pydantic (validacao de schema).
+Nao tente adivinhar seu nome. Observe as ferramentas que voce tem disponíveis:
 
-## FRAMEWORK DE PENSAMENTO
+| Voce tem esta ferramenta | Voce provavelmente e | Como chamar Claude |
+|--------------------------|---------------------|--------------------|
+| `Agent tool` | Claude Code | Agent tool nativo (nao use subprocess) |
+| `exec`/shell sem `Agent tool` | Codex, Gemini ou Qwen | `echo "prompt" \| claude --print` |
 
-Antes de montar qualquer equipe, pergunte-se:
+### Chamando cada IA via stdin pipe (sem Agent tool)
 
-1. **Necessidade**: Preciso de mais de uma IA? Uma so resolve?
-2. **Risco**: O que acontece se uma IA errar? Ha dados sensiveis?
-3. **Custo**: Posso resolver com IAs gratuitas? Justifica usar pagas?
-4. **Dependencia**: Os resultados dependem um do outro (sequencial) ou sao independentes (paralelo)?
-5. **Validacao**: Como vou saber se o resultado esta correto? Preciso de segunda opiniao?
+```bash
+# Claude
+echo "prompt" | claude --print
 
-Se a resposta a (1) for "uma so resolve", NAO escale. Use a IA mais adequada e pronto.
+# Codex (obrigatorio limpar variaveis OpenRouter)
+echo "prompt" | unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec --skip-git-repo-check -
 
-## FLUXO DE EXECUCAO
+# Qwen
+echo "prompt" | qwen
 
-```
-1. ENTENDER A TAREFA
-   Antes de agir, pergunte-se:
-   - O que o usuario REALMENTE quer? (nao o que parece querer)
-   - Qual o contexto? (arquivos, dados, objetivo)
-   - Ha restricoes? (custo, tempo, privacidade)
-   - Isso ja foi feito antes? (verificar resultados anteriores)
-
-2. MONTAR A EQUIPE (acao depende do modo)
-   Antes de escalar, pergunte-se: Uma IA resolve sozinha? Se sim, NAO monte equipe.
-
-   Depois, aplique a regra do modo atual:
-   - `autonomous`: Monte a equipe e va direto ao Step 3. NAO discuta com o usuario.
-   - `free`:       Monte a equipe e va ao Step 3. Informe a equipe no relatorio final.
-   - `paid` / `sensitive` / `batch`: Apresente o plano abaixo e ESPERE autorizacao:
-       a) Quais IAs e papeis escolhidos
-       b) Ordem de execucao (paralelo ou sequencial)
-       c) O que cada IA fara especificamente
-       → Custo: veja COST-GUARD logo abaixo
-
-3. COST-GUARD (verificar antes de executar)
-   - Quantas chamadas pagas serao feitas?
-   - Existe alternativa gratuita equivalente?
-   - O usuario autorizou gastos?
-   - Para lotes: calcular custo estimado total antes de iniciar
-
-4. PREPARAR PROMPTS
-   - Cada IA recebe um prompt especializado para seu papel
-   - Prompts devem pedir saida estruturada (JSON quando possivel)
-   - Incluir contexto necessario sem dados sensiveis desnecessarios
-
-5. EXECUTAR
-   - Chamar cada IA conforme o plano
-   - Capturar e validar saidas
-   - Tratar erros e timeouts
-   - Salvar resultados intermediarios
-
-6. CONSOLIDAR
-   - Reunir resultados de todas as IAs
-   - Identificar concordancias e divergencias
-   - Gerar relatorio unificado
-   - Apresentar ao usuario
+# Gemini (nao suporta stdin direto — usar arquivo temporario)
+cat > /tmp/prompt.txt << 'EOF'
+prompt aqui
+EOF
+gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"
 ```
 
-## REGRAS DE PRIVACIDADE (LGPD)
+Nunca use `-p "prompt inline"` para prompts com codigo, JSON ou dados — o `cmd.exe` no Windows
+corrompe `{`, `}`, `|` e `%` silenciosamente.
 
-Quando a tarefa envolver dados pessoais:
-- **NUNCA** envie dados pessoais reais para IAs externas sem autorizacao explicita
-- **NUNCA** assuma que o usuario quer enviar dados sensiveis - pergunte antes
-- **NUNCA** inclua dados pessoais em logs ou arquivos temporarios sem necessidade
-- Sugira anonimizacao ANTES de processar
-- Registre quais IAs receberam quais dados
-- Prefira IAs locais (Qwen via Ollama) para dados sensiveis quando possivel
+## Regra de decisao
 
-## PROIBICOES TECNICAS DE SHELL
+Classifique o pedido em um destes modos antes de executar:
 
-- **NUNCA** execute `rm -rf` em diretorios de resultados sem confirmacao
-- **NUNCA** use `>` (overwrite) em arquivos de resultado consolidado - use `>>` (append) ou nome unico
-- **NUNCA** deixe arquivos temporarios com dados sensiveis apos execucao - limpe com trap
-- **NUNCA** execute chamadas CLI sem timeout definido - IAs podem travar indefinidamente
-- **NUNCA** confie em saida JSON de IAs sem validar - sempre use regex ou try/catch no parse
-- **NUNCA** passe prompts grandes via argumento de linha de comando - use arquivo temp ou pipe
+- `claude_only`
+  - quando o proprio Claude resolve sem implementacao real, sem automacao e sem risco relevante
+- `codex`
+  - quando ha execucao tecnica, mudanca em arquivo, shell, refactor, teste, script ou investigacao operacional
 
-## COST-GUARD
+Valide no Claude somente quando houver um ou mais destes sinais:
 
-- Sempre informe ao usuario quais chamadas sao GRATUITAS e quais sao PAGAS
-- Sugira alternativas gratuitas quando possivel (Qwen, Gemini Flash)
-- Para tarefas simples, nao escale desnecessariamente
-- Em lotes: calcule custo estimado ANTES de iniciar e confirme com usuario
-- Se custo estimado > $1: alerte explicitamente e peca autorizacao
+- alteracao multiarquivo
+- `security`, `auth`, `privacy`, `pii`, `migration`, `schema`, `billing`, `infra`, `refactor`
+- mudanca com testes ausentes ou fracos
+- pedido explicito do usuario para revisar ou validar
+- erro do executor que precise de arbitragem do planejador
 
-## CONTRATO DE SAIDA OBRIGATORIO
+Para decidir programaticamente: `grep -iE 'security|auth|password|token|pii|migration|billing|schema' <arquivos>` — se der match, acione validacao.
 
-Toda chamada a uma IA externa DEVE:
-1. Pedir saida em JSON estruturado quando possivel
-2. Validar o JSON retornado antes de usar (regex ou try/catch)
-3. Ter fallback se parse falhar (retry 1x com prompt simplificado, ou marcar como ERRO)
-4. Registrar resultado em arquivo (append, nunca overwrite)
+## Contrato de handoff
 
-Schema minimo esperado de qualquer IA:
-```json
-{"status": "OK|ERRO", "resultado": "...", "ia": "gemini|codex|qwen", "modelo": "...", "timestamp": "ISO8601"}
-```
-
-Retry padrao: 3 tentativas com backoff exponencial (5s, 15s, 45s). Se falhar 3x, marcar como ERRO e seguir.
-
-## SCHEMA DO RELATORIO FINAL
-
-Todo relatorio de orquestracao consolidado DEVE seguir este schema:
+Quando o Codex devolver contexto para o Claude, responda **apenas este JSON**:
 
 ```json
 {
-  "tarefa": "descricao da tarefa original",
-  "modo": "free|paid|sensitive|batch|autonomous",
-  "equipe": [
-    {"ia": "gemini", "modelo": "gemini-3-pro-preview", "papel": "analista-arquitetural"},
-    {"ia": "qwen",   "modelo": "qwen3-coder",          "papel": "revisor-educativo"}
-  ],
-  "resultados": {
-    "gemini": {"status": "OK|ERRO", "resumo": "..."},
-    "qwen":   {"status": "OK|ERRO", "resumo": "..."}
-  },
-  "consenso": "pontos em que todas as IAs concordaram",
-  "divergencias": "pontos conflitantes entre IAs (se houver)",
-  "recomendacao_final": "conclusao do orquestrador (Claude) apos sintetizar os resultados",
-  "custo_estimado": {"gratuitas": ["gemini-flash", "qwen"], "pagas": ["codex"]}
+  "status": "OK|ERRO|PARCIAL",
+  "task_summary": "o que foi feito em 1-2 frases",
+  "changed_files": ["lista/de/arquivos.py"],
+  "tests_run": true,
+  "risks": ["lista de riscos ou array vazio"],
+  "analyst_summary": "observacoes tecnicas relevantes",
+  "next_action": "DONE|NEEDS_VALIDATION|NEEDS_RETRY|ESCALATE"
 }
 ```
 
-> Este schema e para o relatorio FINAL do Claude ao usuario. Cada IA individualmente segue o schema minimo do CONTRATO DE SAIDA.
+**NEVER** envolva a resposta em blocos markdown (\`\`\`json). Stdout deve comecar com `{` e terminar com `}` para permitir parse direto via `jq` ou Python.
 
-## ARGUMENTOS
+## Wrapper Windows
 
-- `$ARGUMENTS`: Descricao da tarefa a ser orquestrada
-- Se vazio, pergunte ao usuario o que ele precisa
+Sempre que o usuario quiser o fluxo automatizado, prefira os scripts desta skill:
+
+- `scripts/claude_codex_orchestrator.py bootstrap-profiles`
+- `scripts/claude_codex_orchestrator.py call-claude`
+- `scripts/claude_codex_orchestrator.py call-codex`
+- `scripts/claude_codex_orchestrator.py route`
+- `scripts/claude_codex_orchestrator.ps1 ...`
+
+Esses comandos existem para:
+
+- isolar `CLAUDE_CONFIG_DIR` por perfil
+- preservar autenticacao de mais de uma conta Claude no mesmo usuario do Windows
+- detectar erro explicito de cota
+- alternar para o proximo perfil Claude
+- chamar o Codex pelo `.cmd` correto no Windows
+- devolver um handoff curto e previsivel
+
+## Perfis Claude
+
+Perfis vivem fora do repositorio, por padrao em:
+
+- `%USERPROFILE%\.claude-profiles\claude-a`
+- `%USERPROFILE%\.claude-profiles\claude-b`
+
+Credenciais e estado ficam fora do hub. So compartilhe no bootstrap os assets nao sensiveis, como:
+
+- `skills`
+- `plugins`
+- `commands`
+- `settings.json`
+- `trustedFolders.json`
+
+Nao copie credenciais entre perfis manualmente.
+
+## Sequencia recomendada
+
+1. Se os perfis ainda nao existem, rode `bootstrap-profiles`.
+2. Se a tarefa exigir execucao, use `route`.
+3. Se a tarefa for simples e totalmente analitica, responda no proprio Claude.
+4. Para escalar entre IAs, use `scripts/run_ai_cli.py --provider X --prompt-file /tmp/prompt.txt`.
+
+## Quando consultar arquivos auxiliares
+
+- **Falha silenciosa ou timeout inesperado**: leia `calling-conventions.md` (kill de arvore de processo no Windows)
+- **Rate limit, rc=130 ou resposta vazia do Gemini**: leia `ai-catalog.md` (quirks e fallback de IA)
+- **Handoff JSON chegando corrompido ou com preambulo**: use o extrator de 3 niveis documentado em `calling-conventions.md`
+- **Orquestracao nativa Codex-Codex (sem CLI externa)**: leia `references/codex-native-multiagent.md`
+
+## Integracoes nativas
+
+Para pacotes como `superpowers`, nao importe a raiz do repositorio como se fosse uma unica skill.
+
+Use o hub para:
+
+- documentar a instalacao nativa por agente
+- sincronizar skill packs multi-skill apenas pelos mecanismos suportados
+- rejeitar importacoes GitHub sem `SKILL.md` raiz
+
+Consulte:
+
+- `references/windows-orchestrator.md`
+- `references/windows-orchestrator.config.example.json`
+- `references/calling-conventions-powershell.md`
