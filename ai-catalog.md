@@ -50,7 +50,7 @@
 | `echo "prompt" \| qwen` | `echo "prompt" \| qwen --yolo` |
 
 - Le stdin nativamente, sem flags
-- Limite: 2.000 req/dia (gratuito via OpenRouter); sem limite via Ollama local
+- Limite: 2.000 req/dia via OpenRouter; sem limite via Ollama local
 
 ---
 

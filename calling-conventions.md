@@ -156,8 +156,7 @@ cat /tmp/qwen_prompt.txt | qwen && rm /tmp/qwen_prompt.txt
 - Para JSON: pedir "Responda APENAS JSON, sem texto adicional"
 
 ### Limites
-- 2.000 requisicoes/dia (gratuito via OpenRouter)
-- Sem limite via Ollama local
+- 2.000 requisicoes/dia via OpenRouter; sem limite via Ollama local
 
 ---
 
