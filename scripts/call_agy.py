@@ -6,7 +6,11 @@ Requisito: pip install pywinpty
 Uso:
     python call_agy.py "seu prompt aqui"
     python call_agy.py "seu prompt aqui" --timeout 120
-    python call_agy.py "seu prompt aqui" --model gemini-3-pro-preview
+    python call_agy.py "seu prompt aqui" --model "Claude Opus 4.6 (Thinking)"
+
+Modelo padrão:
+    Definido em ~/.gemini/antigravity-cli/settings.json ("model").
+    Não passe --model se quiser usar o que está configurado lá.
 
 Problema resolvido:
     agy -p "prompt" não produz saída quando stdout não é um TTY real (bug conhecido,
@@ -116,7 +120,11 @@ def main() -> None:
     )
     parser.add_argument("prompt", help="Prompt a enviar ao agy")
     parser.add_argument("--timeout", type=int, default=120, help="Timeout em segundos")
-    parser.add_argument("--model", default=None, help="Modelo a usar (ex: gemini-3-pro-preview)")
+    parser.add_argument(
+        "--model", default=None,
+        help='Substitui o modelo do settings.json. Use o ID exato (ex: "Claude Opus 4.6 (Thinking)"). '
+             "Omita para usar o modelo configurado em ~/.gemini/antigravity-cli/settings.json."
+    )
     args = parser.parse_args()
 
     result = call_agy(args.prompt, timeout=args.timeout, model=args.model)
