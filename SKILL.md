@@ -30,7 +30,7 @@ Nao tente adivinhar seu nome. Observe as ferramentas que voce tem disponíveis:
 | `Agent tool` | Claude Code | Agent tool nativo (nao use subprocess) |
 | `exec`/shell sem `Agent tool` | Codex, Gemini ou Qwen | `echo "prompt" \| claude --print` |
 
-### Chamando cada IA via stdin pipe (sem Agent tool)
+### Chamando cada IA via stdin pipe ou wrapper (sem Agent tool)
 
 ```bash
 # Claude
@@ -42,7 +42,10 @@ echo "prompt" | unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec --sk
 # Qwen
 echo "prompt" | qwen
 
-# Gemini (nao suporta stdin direto — usar arquivo temporario)
+# agy / Antigravity CLI (substituto do Gemini — NAO usar -p direto, stdout vazio fora de TTY)
+python scripts/call_agy.py "prompt"        # requer: pip install pywinpty
+
+# Gemini (DEPRECADO — EOL 2026-06-18)
 cat > /tmp/prompt.txt << 'EOF'
 prompt aqui
 EOF
@@ -135,6 +138,7 @@ Nao copie credenciais entre perfis manualmente.
 ## Quando consultar arquivos auxiliares
 
 - **Falha silenciosa ou timeout inesperado**: leia `calling-conventions.md` (kill de arvore de processo no Windows)
+- **agy sem saida em subprocesso**: use `python scripts/call_agy.py` (ConPTY via pywinpty) — ver `calling-conventions.md` secao 5
 - **Rate limit, rc=130 ou resposta vazia do Gemini**: leia `ai-catalog.md` (quirks e fallback de IA)
 - **Handoff JSON chegando corrompido ou com preambulo**: use o extrator de 3 niveis documentado em `calling-conventions.md`
 - **Orquestracao nativa Codex-Codex (sem CLI externa)**: leia `references/codex-native-multiagent.md`

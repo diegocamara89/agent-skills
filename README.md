@@ -1,6 +1,6 @@
 # orchestrate — Agent Skill para Orquestração Multi-IA via CLI
 
-> Compatível com **Claude Code**, **Codex CLI**, **Qwen**, **Gemini** e qualquer agente que suporte SKILL.md ou AGENTS.md.
+> Compatível com **Claude Code**, **Codex CLI**, **Qwen**, **Antigravity CLI (agy)** e qualquer agente que suporte SKILL.md ou AGENTS.md.
 
 ## O que faz
 
@@ -25,7 +25,7 @@ cp -r orchestrate/ ~/.claude/skills/
 ## Como usar
 
 ```
-/orchestrate analise arquitetural do arquivo X.py com Gemini e Codex
+/orchestrate analise arquitetural do arquivo X.py com agy e Codex
 ```
 
 ## Estrutura
@@ -40,7 +40,7 @@ orchestrate/
 ├── team-patterns.md         # → redirect para run_ai_cli.py
 ├── agents/openai.yaml       # Agente OpenAI com instruções de orquestração
 ├── references/              # Docs auxiliares (windows-orchestrator, codex multiagent...)
-├── scripts/                 # run_ai_cli.py, claude_codex_orchestrator.py/.ps1
+├── scripts/                 # run_ai_cli.py, claude_codex_orchestrator.py/.ps1, call_agy.py
 └── tests/                   # Testes dos scripts
 ```
 
@@ -58,13 +58,14 @@ orchestrate/
 | Claude | `echo "prompt" \| claude --print` | stdin obrigatório no Windows |
 | Codex | `echo "prompt" \| unset OPENAI_BASE_URL && ... codex exec -` | Limpar vars OpenRouter |
 | Qwen | `echo "prompt" \| qwen` | stdin nativo |
-| Gemini | `gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"` | Não suporta stdin |
+| **agy** | `python scripts/call_agy.py "prompt"` | **ConPTY obrigatório** — `agy -p` direto não produz saída fora de TTY. Requer `pip install pywinpty` |
+| Gemini | `gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"` | **Deprecado** (EOL 2026-06-18) |
 
 ## Autor
 
 **Diego Câmara** — [@diegocamara89](https://github.com/diegocamara89)
 
-Criado com Claude Code + Gemini CLI + Codex CLI (fev/2026). Refatorado abr/2026.
+Criado com Claude Code + Gemini CLI + Codex CLI (fev/2026). Refatorado jun/2026 — adicionado agy (Antigravity CLI).
 
 ## Licença
 

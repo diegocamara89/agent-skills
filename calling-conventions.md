@@ -2,7 +2,7 @@
 
 > Este documento define os comandos EXATOS para chamar cada IA.
 > Testado e validado no ambiente do usuario (Windows + Git Bash/MSYS2).
-> **Atualizado em 2026-04-05** com licoes aprendidas em producao (pipeline URGA).
+> **Atualizado em 2026-06-18** — adicionado Antigravity CLI (agy), substituto do Gemini CLI.
 
 ---
 
@@ -15,12 +15,13 @@
 | Metodo | Quando usar | Risco |
 |--------|-------------|-------|
 | **stdin pipe** (RECOMENDADO) | Prompts com conteudo variavel (curriculos, codigo, JSON, dados) | Nenhum |
+| **`call_agy.py`** (agy) | Qualquer chamada ao agy em subprocesso | Nenhum (ConPTY) |
 | `-p "texto"` | Prompts curtos (< 500 chars) sem caracteres especiais | ALTO se tiver `{}|\%` |
 | `@arquivo` (Gemini) | Prompts grandes pre-montados | Nenhum (requer arquivo temp) |
 
 **Limite do cmd.exe**: 8191 caracteres maximo em argumento de linha de comando.
 
-### stdin pipe — Padrao SEGURO para todas as IAs
+### stdin pipe — Padrao SEGURO para todas as IAs (exceto agy)
 ```bash
 # Codex: flag '-' le de stdin
 echo "seu prompt" | unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec --skip-git-repo-check -
@@ -28,11 +29,14 @@ echo "seu prompt" | unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec 
 # Qwen: le de stdin nativamente
 echo "seu prompt" | qwen
 
-# Gemini: usar @arquivo (nao suporta stdin direto)
+# Gemini (DEPRECADO — EOL 2026-06-18): usar @arquivo (nao suporta stdin direto)
 cat > /tmp/prompt.txt << 'EOF'
 seu prompt aqui
 EOF
 gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"
+
+# agy (Antigravity — substituto do Gemini): NAO usar stdin nem -p direto em subprocesso
+# Ver secao 5 abaixo.
 ```
 
 ### Detector de prompt corrompido
@@ -192,7 +196,62 @@ claude -p "prompt longo"      # RISCO — cmd.exe corrompe {|}%
 
 ### Quando Claude e o ORQUESTRADOR (dentro do Claude Code)
 Nao use subprocess. Use o Agent tool nativo para chamar Codex,
-e o Bash tool com stdin pipe para chamar Gemini e Qwen.
+e o Bash tool com stdin pipe para chamar Qwen.
+Para o agy, use `python scripts/call_agy.py "prompt"` via Bash tool.
+
+---
+
+## 5. ANTIGRAVITY CLI (agy)
+
+> **Substituto oficial do Gemini CLI.** EOL do Gemini CLI: 2026-06-18.
+> Modelo atual: Claude Opus 4.6 (Thinking) via Google DeepMind.
+
+### CRITICO: nao usar agy -p diretamente como subprocesso
+
+```bash
+# ERRADO — stdout vazio fora de TTY (bug confirmado: github.com/google-antigravity/antigravity-cli/issues/76)
+agy -p "prompt"
+
+# TAMBEM ERRADO — winpty falha com "stdin is not a tty"
+winpty agy -p "prompt"
+```
+
+### Chamada correta via ConPTY (UNICO metodo confiavel)
+
+```bash
+# Prerequisito: pip install pywinpty
+python scripts/call_agy.py "seu prompt aqui"
+
+# Com modelo especifico
+python scripts/call_agy.py "seu prompt" --model gemini-3-pro-preview
+
+# Com timeout customizado (padrao 120s)
+python scripts/call_agy.py "seu prompt" --timeout 300
+```
+
+### Via Python (para integracao em outros scripts)
+
+```python
+from scripts.call_agy import call_agy
+
+resposta = call_agy("Analise este codigo e sugira melhorias", timeout=120)
+print(resposta)
+```
+
+### Como funciona
+
+O `call_agy.py` usa `pywinpty` para criar um **ConPTY** (Windows Console PTY):
+- O agy detecta um TTY real e habilita a saida
+- O script captura o stream, remove sequencias ANSI/OSC e retorna texto limpo
+- Processo e encerrado graciosamente apos EOFError ou timeout
+
+### Timeout recomendado
+- Padrao: 120s
+- Tarefas complexas: 300s
+
+### Parsing de saida
+- Saida em texto Markdown
+- Para JSON: pedir explicitamente no prompt
 
 ---
 

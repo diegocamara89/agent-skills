@@ -1,7 +1,7 @@
 # Quirks e Limites das IAs neste Ambiente
 
 > Apenas comportamentos nao-obvios, bugs locais e restricoes de producao.
-> Ultima atualizacao: 2026-04-05
+> Ultima atualizacao: 2026-06-18
 
 ---
 
@@ -54,13 +54,40 @@
 
 ---
 
+## Antigravity CLI (agy)
+
+> Substituto oficial do Gemini CLI. EOL do Gemini CLI: **2026-06-18**.
+
+| Comando | Observacao |
+|---------|-----------|
+| `python scripts/call_agy.py "prompt"` | **UNICO metodo confiavel em subprocesso** |
+| `agy -p "prompt"` | **NAO USAR em subprocesso** — stdout vazio fora de TTY |
+
+**Quirk critico (confirmado em producao 2026-06-18):**
+- `agy -p` nao flusheia stdout quando nao ha TTY real — bug confirmado em
+  [github.com/google-antigravity/antigravity-cli/issues/76](https://github.com/google-antigravity/antigravity-cli/issues/76)
+- `winpty agy -p "..."` tambem falha (`stdin is not a tty`)
+- **Solucao**: `scripts/call_agy.py` usa `pywinpty` para criar um ConPTY (pseudo-terminal Windows),
+  enganando o agy e capturando a saida normalmente
+
+**Instalacao do prerequisito:**
+```bash
+pip install pywinpty
+```
+
+**Modelo atual**: Claude Opus 4.6 (Thinking) via Google DeepMind (configuravel via `--model`).
+
+**Timeout recomendado**: 120s padrao, 300s para tarefas complexas.
+
+---
+
 ## Matriz de decisao rapida
 
 | Necessidade | 1a opcao | 2a opcao |
 |-------------|----------|---------|
-| Analise arquitetural pontual | Gemini Pro | Claude |
+| Analise arquitetural pontual | agy (Antigravity) | Claude |
 | Bugs especificos / implementacao | Codex | Claude |
 | Lote grande (>20 itens) | Codex | Qwen |
-| Lote pequeno ou triagem | Qwen | Gemini Flash |
+| Lote pequeno ou triagem | Qwen | agy |
 | Dados sensiveis (local) | Qwen via Ollama | Claude |
-| Visao executiva / plano | Claude | Gemini Pro |
+| Visao executiva / plano | Claude | agy |

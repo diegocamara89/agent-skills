@@ -15,15 +15,17 @@ description: Orquestrador multi-IA para Codex, Gemini e Qwen. Cheatsheet de invo
 | Claude | `echo "prompt" \| claude --print` | Nao usar `-p inline` — cmd.exe corrompe `{|}%` |
 | Codex | `echo "prompt" \| unset OPENAI_BASE_URL && unset OPENAI_API_KEY && codex exec --skip-git-repo-check -` | Limpar vars OpenRouter e obrigatorio |
 | Qwen | `echo "prompt" \| qwen` | Le stdin nativamente |
-| Gemini | `gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"` | Nao suporta stdin — exige arquivo |
+| **agy** | `python scripts/call_agy.py "prompt"` | **NAO** usar `agy -p` direto — stdout vazio fora de TTY. Requer `pip install pywinpty` |
+| Gemini | `gemini -m gemini-3-flash-preview -p "@/tmp/prompt.txt"` | **DEPRECADO** (EOL 2026-06-18) — migrar para agy |
 
 Para prompts longos ou com `{}|%`, use sempre o script centralizado:
 
 ```bash
 python scripts/run_ai_cli.py --provider claude  --prompt-file /tmp/prompt.txt
 python scripts/run_ai_cli.py --provider codex   --prompt-file /tmp/prompt.txt
-python scripts/run_ai_cli.py --provider gemini  --model gemini-3-flash-preview --prompt-file /tmp/prompt.txt
 python scripts/run_ai_cli.py --provider qwen    --prompt-file /tmp/prompt.txt
+# agy: usar call_agy.py diretamente (run_ai_cli.py nao suporta agy ainda)
+python scripts/call_agy.py "prompt"
 ```
 
 ## Quando escalar e contrato de handoff
